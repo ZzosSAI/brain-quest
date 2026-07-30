@@ -4,7 +4,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useGameStore } from '../game/GameEngine';
 
 // ─── Die face dot patterns ─────────────────────────────
-const DOT_PATTERNS: { x: number; z: number }[][] = [
+const DOT_PATTERNS: [number, number][][] = [
   [], // unused
   [[0, 0]],                                       // 1
   [[-0.2, -0.2], [0.2, 0.2]],                     // 2
@@ -30,7 +30,7 @@ function DieFace({ dots, color = '#FFFFFF', glow = false }: {
         emissiveIntensity={glow ? 0.3 : 0}
       />
       {dots.map((d, i) => (
-        <mesh key={i} position={[d.x, d.z, 0.001]}>
+        <mesh key={i} position={[d[0], d[1], 0.001]}>
           <circleGeometry args={[0.04, 12]} />
           <meshBasicMaterial color="#222" />
         </mesh>
@@ -193,7 +193,7 @@ export default function Dice3D({ position, size = 0.5 }: DiceProps) {
         return (
           <group key={fi} position={pos} rotation={FACE_ROTATIONS[fi] as [number, number, number]}>
             <DieFace
-              dots={dots.map(d => ({ x: d.x * size, z: d.z * size }))}
+              dots={dots.map(d => ({ x: d[0] * size, z: d[1] * size }))}
               color="#FFF"
               glow={fi === 4 && isClickable}
             />
