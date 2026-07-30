@@ -1,17 +1,17 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '../game/GameEngine';
 
 // ─── Die face dot patterns ─────────────────────────────
 const DOT_PATTERNS: [number, number][][] = [
-  [], // unused
-  [[0, 0]],                                       // 1
-  [[-0.2, -0.2], [0.2, 0.2]],                     // 2
-  [[-0.2, -0.2], [0, 0], [0.2, 0.2]],             // 3
-  [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]], // 4
-  [[-0.2, -0.2], [0.2, -0.2], [0, 0], [-0.2, 0.2], [0.2, 0.2]], // 5
-  [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0], [0.2, 0], [-0.2, 0.2], [0.2, 0.2]], // 6
+  [],
+  [[0, 0]],
+  [[-0.2, -0.2], [0.2, 0.2]],
+  [[-0.2, -0.2], [0, 0], [0.2, 0.2]],
+  [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]],
+  [[-0.2, -0.2], [0.2, -0.2], [0, 0], [-0.2, 0.2], [0.2, 0.2]],
+  [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0], [0.2, 0], [-0.2, 0.2], [0.2, 0.2]],
 ];
 
 function DieFace({ dots, color = '#FFFFFF', glow = false }: {
@@ -30,7 +30,7 @@ function DieFace({ dots, color = '#FFFFFF', glow = false }: {
         emissiveIntensity={glow ? 0.3 : 0}
       />
       {dots.map((d, i) => (
-        <mesh key={i} position={[d[0], d[1], 0.001]}>
+        <mesh key={i} position={[d.x, d.z, 0.001]}>
           <circleGeometry args={[0.04, 12]} />
           <meshBasicMaterial color="#222" />
         </mesh>
@@ -40,24 +40,13 @@ function DieFace({ dots, color = '#FFFFFF', glow = false }: {
 }
 
 const FACE_POSITIONS: [number, number, number][] = [
-  [0, 0, 0.25],  // front (1)
-  [0, 0, -0.25], // back (6)
-  [0.25, 0, 0],  // right (2)
-  [-0.25, 0, 0], // left (5)
-  [0, 0.25, 0],  // top (3)
-  [0, -0.25, 0], // bottom (4)
+  [0, 0, 0.25],  [0, 0, -0.25], [0.25, 0, 0],
+  [-0.25, 0, 0], [0, 0.25, 0],  [0, -0.25, 0],
 ];
-
 const FACE_ROTATIONS: [number, number, number][] = [
-  [0, 0, 0],
-  [0, Math.PI, 0],
-  [0, Math.PI / 2, 0],
-  [0, -Math.PI / 2, 0],
-  [-Math.PI / 2, 0, 0],
-  [Math.PI / 2, 0, 0],
+  [0, 0, 0], [0, Math.PI, 0], [0, Math.PI / 2, 0],
+  [0, -Math.PI / 2, 0], [-Math.PI / 2, 0, 0], [Math.PI / 2, 0, 0],
 ];
-
-// Face values: face index → dice value
 const FACE_VALUES = [1, 6, 2, 5, 3, 4];
 
 interface DiceProps {
@@ -67,90 +56,77 @@ interface DiceProps {
 
 export default function Dice3D({ position, size = 0.5 }: DiceProps) {
   const groupRef = useRef<THREE.Group>(null!);
-  const targetRot = useRef(new THREE.Euler(0, 0, 0));
-  const lastRoll = useGameStore(s => s.lastRoll);
-  const phase = useGameStore(s => s.phase);
   const rollDiceAction = useGameStore(s => s.rollDice);
+  const phase = useGameStore(s => s.phase);
+  const lastRoll = useGameStore(s => s.lastRoll);
   const [rolling, setRolling] = useState(false);
-  const [rollPhase, setRollPhase] = useState<'idle' | 'spinning' | 'settling' | 'done'>('idle');
   const [displayValue, setDisplayValue] = useState(1);
+  const intervalRef = useRef<number | null>(null);
+  const isClickable = phase === 'rolling' && !rolling;
 
-  // Idle floating
+  // Idle floating animation
   useFrame((state) => {
-    if (!groupRef.current) return;
-    if (rollPhase === 'idle') {
-      groupRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 1.2) * 0.05;
-      groupRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.3) * 0.05;
-      groupRef.current.rotation.z = Math.cos(state.clock.elapsedTime * 0.4) * 0.05;
-    }
+    if (!groupRef.current || rolling) return;
+    groupRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 1.2) * 0.05;
+    groupRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.3) * 0.05;
+    groupRef.current.rotation.z = Math.cos(state.clock.elapsedTime * 0.4) * 0.05;
   });
 
-  // Handle roll
+  // Cleanup on unmount
   useEffect(() => {
-    if (phase === 'rolling' && !rolling) {
-      setRolling(true);
-      setRollPhase('spinning');
-
-      const duration = 1200;
-      const startTime = Date.now();
-      const startRot = {
-        x: groupRef.current.rotation.x,
-        y: groupRef.current.rotation.y,
-        z: groupRef.current.rotation.z,
-      };
-
-      const interval = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(1, elapsed / duration);
-
-        // Spin wildly
-        if (groupRef.current) {
-          groupRef.current.rotation.x = startRot.x + progress * Math.PI * 8;
-          groupRef.current.rotation.y = startRot.y + progress * Math.PI * 12;
-          groupRef.current.rotation.z = startRot.z + progress * Math.PI * 6;
-
-          // Bounce up then down
-          const bounce = Math.sin(progress * Math.PI) * 0.5;
-          groupRef.current.position.y = position[1] + bounce;
-
-          // Scale pulse
-          const scale = 1 + Math.sin(progress * Math.PI * 4) * 0.05;
-          groupRef.current.scale.setScalar(scale);
-        }
-
-        if (progress >= 1) {
-          clearInterval(interval);
-          setRollPhase('settling');
-
-          // Settle on the final value
-          setTimeout(() => {
-            setRolling(false);
-            setRollPhase('done');
-            rollDiceAction();
-
-            // After roll processing, go back to idle
-            setTimeout(() => {
-              setRollPhase('idle');
-            }, 500);
-          }, 200);
-        }
-      }, 16);
-    }
-  }, [phase, rolling]);
-
-  // Show final value
-  useEffect(() => {
-    if (lastRoll > 0 && rollPhase === 'done') {
-      setDisplayValue(lastRoll);
-    }
-  }, [lastRoll, rollPhase]);
-
-  const isClickable = phase === 'rolling' && !rolling;
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
 
   const handleClick = () => {
     if (!isClickable) return;
-    setRollPhase('spinning');
     setRolling(true);
+    rollDiceAction();
+
+    // Animate the dice spinning
+    const startTime = Date.now();
+    const duration = 800;
+    const startRot = groupRef.current
+      ? { x: groupRef.current.rotation.x, y: groupRef.current.rotation.y, z: groupRef.current.rotation.z }
+      : { x: 0, y: 0, z: 0 };
+
+    // Rapidly cycle through values during spin
+    const spinInterval = setInterval(() => {
+      setDisplayValue(Math.floor(Math.random() * 6) + 1);
+    }, 60);
+
+    // Animate using requestAnimationFrame
+    let animFrame: number;
+    const animate = () => {
+      if (!groupRef.current) { animFrame = requestAnimationFrame(animate); return; }
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(1, elapsed / duration);
+
+      groupRef.current.rotation.x = startRot.x + progress * Math.PI * 6;
+      groupRef.current.rotation.y = startRot.y + progress * Math.PI * 8;
+      groupRef.current.rotation.z = startRot.z + progress * Math.PI * 4;
+
+      const bounce = Math.sin(progress * Math.PI) * 0.4;
+      groupRef.current.position.y = position[1] + bounce;
+
+      const scale = 1 + Math.sin(progress * Math.PI * 3) * 0.06;
+      groupRef.current.scale.setScalar(scale);
+
+      if (progress < 1) {
+        animFrame = requestAnimationFrame(animate);
+      } else {
+        // Settle: show the result from the store
+        // The store already has the roll result from rollDiceAction()
+        const result = useGameStore.getState().lastRoll;
+        if (result > 0) {
+          setDisplayValue(result);
+        }
+        clearInterval(spinInterval);
+        setRolling(false);
+      }
+    };
+    animFrame = requestAnimationFrame(animate);
   };
 
   const half = size / 2;
@@ -160,12 +136,8 @@ export default function Dice3D({ position, size = 0.5 }: DiceProps) {
       ref={groupRef}
       position={position}
       onClick={handleClick}
-      onPointerEnter={() => {
-        if (isClickable) document.body.style.cursor = 'pointer';
-      }}
-      onPointerLeave={() => {
-        document.body.style.cursor = 'default';
-      }}
+      onPointerEnter={() => { if (isClickable) document.body.style.cursor = 'pointer'; }}
+      onPointerLeave={() => { document.body.style.cursor = 'default'; }}
     >
       {/* Dice body */}
       <mesh castShadow>
@@ -175,7 +147,7 @@ export default function Dice3D({ position, size = 0.5 }: DiceProps) {
           roughness={0.15}
           metalness={0.2}
           emissive={isClickable ? '#FFD700' : '#000'}
-          emissiveIntensity={isClickable ? 0.1 : 0}
+          emissiveIntensity={isClickable ? 0.12 : 0}
         />
       </mesh>
 
@@ -189,7 +161,7 @@ export default function Dice3D({ position, size = 0.5 }: DiceProps) {
       {FACE_POSITIONS.map((pos, fi) => {
         const value = FACE_VALUES[fi];
         const dots = DOT_PATTERNS[value] || [];
-        const isTopFace = fi === 4; // top face shows value prominently
+        const isTopFace = fi === 4;
         return (
           <group key={fi} position={pos} rotation={FACE_ROTATIONS[fi] as [number, number, number]}>
             <DieFace
@@ -201,16 +173,11 @@ export default function Dice3D({ position, size = 0.5 }: DiceProps) {
         );
       })}
 
-      {/* Glow ring when clickable */}
+      {/* Clickable glow ring */}
       {isClickable && (
         <mesh>
           <ringGeometry args={[half + 0.1, half + 0.2, 32]} />
-          <meshBasicMaterial
-            color="#FFD700"
-            transparent
-            opacity={0.3}
-            side={THREE.DoubleSide}
-          />
+          <meshBasicMaterial color="#FFD700" transparent opacity={0.3} side={THREE.DoubleSide} />
         </mesh>
       )}
     </group>
