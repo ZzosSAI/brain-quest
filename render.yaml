@@ -4,7 +4,7 @@ services:
     repo: https://github.com/ZzosSAI/brain-quest
     branch: main
     buildCommand: npm install && npm run build
-    publishPath: dist
+    publishDir: dist
     headers:
       - path: /assets/*
         name: Cache-Control
