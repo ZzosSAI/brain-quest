@@ -1,15 +1,5 @@
 services:
   - type: static
     name: brain-quest
-    repo: https://github.com/ZzosSAI/brain-quest
-    branch: main
     buildCommand: npm install && npm run build
     publishDir: dist
-    headers:
-      - path: /assets/*
-        name: Cache-Control
-        value: public, max-age=31536000, immutable
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
