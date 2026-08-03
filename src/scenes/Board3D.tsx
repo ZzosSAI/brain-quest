@@ -21,7 +21,14 @@ function getTileColor(type: TileType, index: number, total: number, theme: World
   }
 }
 
+// ─── Cached canvas textures (create once, reuse forever) ───
+const textureCache = new Map<string, THREE.CanvasTexture>();
+
 function makeTexture(text: string, fontSize = 24, color = 'rgba(255,255,255,0.5)'): THREE.CanvasTexture {
+  const key = `${text}|${fontSize}|${color}`;
+  const cached = textureCache.get(key);
+  if (cached) return cached;
+
   const canvas = document.createElement('canvas');
   canvas.width = 64; canvas.height = 64;
   const ctx = canvas.getContext('2d')!;
@@ -31,7 +38,10 @@ function makeTexture(text: string, fontSize = 24, color = 'rgba(255,255,255,0.5)
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, 32, 34);
-  return new THREE.CanvasTexture(canvas);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  textureCache.set(key, tex);
+  return tex;
 }
 
 function Tile({ index, type, total, rows, cols, theme }: {
@@ -73,22 +83,22 @@ function Tile({ index, type, total, rows, cols, theme }: {
       {/* Number label */}
       <sprite position={[0, 0.15, 0]} scale={[0.3, 0.3, 1]}>
         <spriteMaterial>
-          <canvasTexture attach="map" args={[makeTexture(String(index + 1), 20)]} />
+          <primitive object={makeTexture(String(index + 1), 20)} attach="map" />
         </spriteMaterial>
       </sprite>
 
       {/* Emoji indicators */}
       {type === 'reward' && <sprite position={[0, 0.35, 0]} scale={[0.25, 0.25, 1]}>
-        <spriteMaterial><canvasTexture attach="map" args={[makeTexture('🎁', 32)]} /></spriteMaterial>
+        <spriteMaterial><primitive object={makeTexture('🎁', 32)} attach="map" /></spriteMaterial>
       </sprite>}
       {type === 'bomb' && <sprite position={[0, 0.35, 0]} scale={[0.25, 0.25, 1]}>
-        <spriteMaterial><canvasTexture attach="map" args={[makeTexture('💣', 32)]} /></spriteMaterial>
+        <spriteMaterial><primitive object={makeTexture('💣', 32)} attach="map" /></spriteMaterial>
       </sprite>}
       {index === 0 && <sprite position={[0, 0.35, 0]} scale={[0.25, 0.25, 1]}>
-        <spriteMaterial><canvasTexture attach="map" args={[makeTexture('🚀', 32)]} /></spriteMaterial>
+        <spriteMaterial><primitive object={makeTexture('🚀', 32)} attach="map" /></spriteMaterial>
       </sprite>}
       {index === total - 1 && <sprite position={[0, 0.35, 0]} scale={[0.25, 0.25, 1]}>
-        <spriteMaterial><canvasTexture attach="map" args={[makeTexture('🏆', 32)]} /></spriteMaterial>
+        <spriteMaterial><primitive object={makeTexture('🏆', 32)} attach="map" /></spriteMaterial>
       </sprite>}
     </group>
   );
@@ -270,7 +280,7 @@ function PlayerToken({ playerIndex, rows, cols }: { playerIndex: number; rows: n
       {/* Character emoji */}
       <sprite position={[0, 0.22, 0]} scale={[0.3, 0.3, 1]}>
         <spriteMaterial>
-          <canvasTexture attach="map" args={[makeTexture(emoji, 28)]} />
+          <primitive object={makeTexture(emoji, 28)} attach="map" />
         </spriteMaterial>
       </sprite>
 
@@ -278,22 +288,7 @@ function PlayerToken({ playerIndex, rows, cols }: { playerIndex: number; rows: n
       {isActive && (
         <sprite position={[0, -0.28, 0]} scale={[0.45, 0.18, 1]}>
           <spriteMaterial>
-            <canvasTexture attach="map" args={[(() => {
-              const c = document.createElement('canvas');
-              c.width = 128; c.height = 48;
-              const ctx = c.getContext('2d')!;
-              ctx.clearRect(0, 0, 128, 48);
-              ctx.fillStyle = 'rgba(0,0,0,0.6)';
-              ctx.beginPath();
-              ctx.roundRect(4, 4, 120, 40, 10);
-              ctx.fill();
-              ctx.fillStyle = color;
-              ctx.font = 'bold 16px Arial';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillText(player.name, 64, 24);
-              return new THREE.CanvasTexture(c);
-            })()]} />
+            <primitive object={makeNameTexture(player.name, color)} attach="map" />
           </spriteMaterial>
         </sprite>
       )}
@@ -302,12 +297,36 @@ function PlayerToken({ playerIndex, rows, cols }: { playerIndex: number; rows: n
       {player.hasFinished && (
         <sprite position={[0, 0.35, 0]} scale={[0.2, 0.2, 1]}>
           <spriteMaterial>
-            <canvasTexture attach="map" args={[makeTexture(`#${player.finishOrder}`, 24, '#FFD700')]} />
+            <primitive object={makeTexture(`#${player.finishOrder}`, 24, '#FFD700')} attach="map" />
           </spriteMaterial>
         </sprite>
       )}
     </group>
   );
+}
+
+function makeNameTexture(name: string, color: string): THREE.CanvasTexture {
+  const key = `name|${name}|${color}`;
+  const cached = textureCache.get(key);
+  if (cached) return cached;
+
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 48;
+  const ctx = c.getContext('2d')!;
+  ctx.clearRect(0, 0, 128, 48);
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.beginPath();
+  ctx.roundRect(4, 4, 120, 40, 10);
+  ctx.fill();
+  ctx.fillStyle = color;
+  ctx.font = 'bold 16px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name, 64, 24);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  textureCache.set(key, tex);
+  return tex;
 }
 
 // ─── Board Component ─────────────────────────────────────
