@@ -192,6 +192,10 @@ function PlayerToken({ playerIndex, rows, cols }: { playerIndex: number; rows: n
   const tokenRef = useRef<THREE.Group>(null);
   const targetPos = useRef(new THREE.Vector3(0, 0, 0));
   const floatRef = useRef(0);
+
+  // Safety: if player doesn't exist yet, render nothing
+  if (!player) return null;
+
   const isActive = currentPlayerIndex === playerIndex && !player.hasFinished;
 
   // Smooth movement to target position
@@ -309,6 +313,7 @@ function PlayerToken({ playerIndex, rows, cols }: { playerIndex: number; rows: n
 // ─── Board Component ─────────────────────────────────────
 export default function Board3D({ theme }: { theme: WorldTheme }) {
   const boardConfig = useGameStore(s => s.boardConfig);
+  const playerCount = useGameStore(s => s.players.length);
   const { rows, cols, totalTiles, tiles, snakes, ladders } = boardConfig;
   const t = THEMES[theme] || THEMES.default;
 
@@ -337,8 +342,8 @@ export default function Board3D({ theme }: { theme: WorldTheme }) {
         <Ladder key={`l${i}`} from={l.from} to={l.to} rows={rows} cols={cols} color={t.ladderColor} />
       ))}
 
-      {/* Player tokens (reactive via zustand) */}
-      {Array.from({ length: 4 }).map((_, i) => (
+      {/* Player tokens (only render actual players) */}
+      {Array.from({ length: playerCount }).map((_, i) => (
         <PlayerToken key={i} playerIndex={i} rows={rows} cols={cols} />
       ))}
     </group>
